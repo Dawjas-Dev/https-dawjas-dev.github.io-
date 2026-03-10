@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="manifest" href="manifest.json" />
+<title>Gdzie Chlać</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+body, html { margin:0; padding:0; height:100%; width:100%; overflow: hidden; font-family:'Inter',sans-serif; background:#f8fafc; }
+#map{height:100%; width:100%; z-index: 1;}
+
+.fab, .locate-btn, .ranking-btn, .help-btn {
+    position:absolute; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(0,0,0,0.2); z-index:1100;
+    display:flex; justify-content:center; align-items:center; background: white; border-radius:50%; font-weight: bold;
+}
+.fab { bottom: 30px; left: 20px; width: 60px; height: 60px; font-size: 30px; background: linear-gradient(135deg,#f59e0b,#ef4444); color: white; }
+.locate-btn { bottom: 30px; right: 20px; width: 50px; height: 50px; font-size: 22px; }
+.ranking-btn { bottom: 30px; right: 85px; width: 50px; height: 50px; font-size: 22px; }
+.help-btn { top: 20px; right: 20px; width: 45px; height: 45px; font-size: 22px; color: #3b82f6; }
+
+.overlay { position:absolute; inset:0; background:rgba(0,0,0,0.4); display:none; z-index:1200; }
+.bottom-panel {
+    position:absolute; bottom:-100%; left:0; width:100%; background:white; transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index:1300; padding: 20px; padding-bottom: 40px; border-radius: 25px 25px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,0.2);
+    max-height: 50vh; overflow-y: auto;
+}
+.bottom-panel.active { bottom: 0; }
+.info-panel-compact { padding: 15px; padding-bottom: 25px; }
+
+.center-modal {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9);
+    background: white; width: 90%; max-width: 400px; padding: 25px;
+    border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    z-index: 1350; opacity: 0; visibility: hidden; transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.center-modal.active { visibility: visible; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+/* NOWY ALERT */
+.modern-alert {
+    position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: white; padding: 14px 24px; border-radius: 30px;
+    z-index: 2000; font-weight: 600; font-size: 15px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.25); 
+    transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    display: flex; align-items: center; gap: 8px; pointer-events: none;
+}
+.modern-alert.show { top: 20px; }
+
+.flex-row-between { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+
+.switch { position: relative; display: inline-block; width: 54px; height: 28px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #22c55e; transition: .4s; border-radius: 34px; }
+.slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+input:checked + .slider { background-color: #ef4444; }
+input:checked + .slider:before { transform: translateX(26px); }
+
+.risk { display: flex; gap: 4px; }
+.risk span { font-size: 22px; opacity: 0.2; cursor: pointer; }
+.risk span.active { opacity: 1; }
+
+.stars-display span, .user-rating-box span { font-size: 24px; cursor: pointer; transition: 0.2s; }
+.stars-display .filled, .user-rating-box .active { color: #f59e0b; }
+.stars-display .empty, .user-rating-box .empty { color: #e2e8f0; }
+
+.ranking-list { max-height: 50vh; overflow-y: auto; }
+.ranking-item { padding: 15px; border-radius: 12px; margin-bottom: 8px; background: #f1f5f9; display: flex; flex-direction: column; cursor: pointer; }
+.user-location-dot { background: #3b82f6; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(59, 130, 246, 0.6); }
+
+input, select { width:100%; padding:14px; margin-bottom:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:16px; outline:none; }
+.submit-btn { width:100%; padding:15px; border-radius:12px; border:none; font-weight:600; background: linear-gradient(135deg,#f59e0b,#ef4444); color:white; font-size: 16px; cursor: pointer; }
+.close-handle { width: 40px; height: 5px; background: #e2e8f0; border-radius: 10px; margin: -5px auto 15px; cursor: pointer; }
+
+.comment-box { background: #f1f5f9; padding: 10px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 14px; display: flex; justify-content: space-between; align-items: flex-start;}
+.action-icon { cursor: pointer; opacity: 0.7; transition: 0.2s; }
+.action-icon:hover { opacity: 1; transform: scale(1.1); }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div class="overlay" id="overlay" onclick="closeAll()"></div>
+
+<div id="modernAlert" class="modern-alert">📍 Kliknij wybrane miejsce na mapie</div>
+
+<button class="fab" onclick="openAddPanel()">＋</button>
+<button class="ranking-btn" onclick="openRanking()">🏆</button>
+<button class="locate-btn" onclick="locateUser()">📍</button>
+<button class="help-btn" onclick="openHelpPanel()">❓</button>
+
+<div class="center-modal" id="helpPanel">
+    <div style="text-align:right;"><span style="font-size:24px; cursor:pointer; color:#94a3b8;" onclick="closeAll()">×</span></div>
+    <h2 style="margin-top:0; color:#1e293b;">O co tu chodzi?</h2>
+    <p style="color:#475569; line-height:1.5;"><strong>📍 Dodawanie:</strong> Kliknij ikonę +, wybierz typ miejsca, a następnie kliknij na mapę.</p>
+    <p style="color:#475569; line-height:1.5;"><strong>⭐ Oceny:</strong> Każda miejscówka ma ocenę od 1 do 5. Głosuj!</p>
+    <p style="color:#475569; line-height:1.5;"><strong>💬 Komentarze:</strong> Opisuj bieżący stan miejsca pod panelem informacji.</p>
+    <p style="color:#475569; line-height:1.5;"><strong>⚠️ Zgłaszanie:</strong> Widzisz spam albo fałszywe miejsce? Użyj przycisku zgłoszenia.</p>
+    <p style="color:#475569; line-height:1.5;"><strong>XD Zgłaszanie:</strong> Widzisz spam albo fałszywe miejsce? Użyj przycisku zgłoszenia.</p>
+    <p style="color:#475569; line-height:1.5;"><strong>s⚠️ Zgłaszanie:</strong> Widzisz spam albo fałszywe miejsce? Użyj przycisku zgłoszenia.</p>
+    <p style="color:#475569; line-height:1.5;"><strong>Kontakt : dawjasdev@gmail.com</strong>  </p>
+</div>
+
+<div class="center-modal" id="reportPanel">
+    <h2 style="margin-top:0; font-size:18px; color:#ef4444;">🚨 Zgłoś nadużycie</h2>
+    <p style="font-size:14px; color:#64748b; margin-bottom: 15px;">Wybierz powód zgłoszenia. Administracja zajmie się tym wkrótce.</p>
+    <select id="reportReason">
+        <option value="spam">Spam / Wulgaryzmy</option>
+        <option value="fake">Fałszywe miejsce / Nie istnieje</option>
+        <option value="danger">Niebezpieczeństwo</option>
+        <option value="other">Inne</option>
+    </select>
+    <div style="display:flex; gap:10px; margin-top:10px;">
+        <button onclick="closeAll()" style="flex:1; padding:12px; border-radius:10px; border:none; background:#e2e8f0; font-weight:bold; cursor:pointer;">Anuluj</button>
+        <button onclick="submitReport()" style="flex:1; padding:12px; border-radius:10px; border:none; background:#ef4444; color:white; font-weight:bold; cursor:pointer;">Wyślij</button>
+    </div>
+</div>
+
+<div class="bottom-panel" id="addPanel">
+    <div class="close-handle" onclick="closeAll()"></div>
+    <h2 style="margin-top:0">Nowa miejscówka</h2>
+    <select id="type" onchange="togglePlenerUI()">
+        <option value="plener">🍾 Plener</option>
+        <option value="pub">🍻 Pub</option>
+        <option value="club">🍸 Klub</option>
+    </select>
+    <input id="nameInput" placeholder="Nazwa miejsca">
+    <input id="descInput" placeholder="Krótki opis">
+    
+    <div id="plenerExtras">
+        <div class="flex-row-between">
+            <span id="toggleLabel" style="font-weight:600">✅ Legalna</span>
+            <label class="switch">
+                <input type="checkbox" id="illegalToggle" onchange="updateToggleUI()">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div id="riskBox" style="display:none">
+            <div class="flex-row-between">
+                <span style="font-weight:600">Poziom przypału</span>
+                <div class="risk" id="riskIcons">
+                    <span>🚨</span><span>🚨</span><span>🚨</span><span>🚨</span><span>🚨</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <button class="submit-btn" id="startAdd">Wybierz punkt na mapie</button>
+</div>
+
+<div class="bottom-panel info-panel-compact" id="infoPanel">
+    <div class="close-handle" onclick="closeAll()"></div>
+    <div class="flex-row-between" style="margin-bottom: 4px;">
+        <div style="display:flex; align-items:center; gap: 8px;">
+            <span id="infoEmoji" style="font-size:26px"></span>
+            <h2 id="infoName" style="margin:0; font-size: 20px;"></h2>
+        </div>
+        <span class="action-icon" id="reportSpotBtn" style="font-size: 14px; padding: 5px;" title="Zgłoś to miejsce">⚠️</span>
+    </div>
+    <p id="infoDesc" style="color:#64748b; margin: 4px 0 10px; font-size: 14px;"></p>
+    <div id="infoRisk" style="margin-bottom:10px; font-weight:600; font-size: 14px; display: flex; align-items: center;"></div>
+    
+    <hr style="border:0; border-top:1px solid #f1f5f9; margin: 12px 0;">
+    
+    <div class="flex-row-between" style="margin-bottom: 12px;">
+        <span style="font-size: 13px; font-weight: 600; color: #94a3b8; letter-spacing: 0.5px;">TWOJA OCENA:</span>
+        <div class="user-rating-box" id="userStars">
+            <span class="empty">★</span><span class="empty">★</span><span class="empty">★</span><span class="empty">★</span><span class="empty">★</span>
+        </div>
+    </div>
+
+    <div class="flex-row-between" style="background: #f8fafc; padding: 10px 12px; border-radius: 12px; margin-bottom: 15px;">
+        <span style="font-size: 13px; font-weight: 600;">ŚREDNIA:</span>
+        <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end;">
+            <div class="stars-display" id="avgStars" style="line-height: 1;"></div>
+            <span id="ratingStats" style="font-size:11px; color:#94a3b8; font-weight:600; margin-top: 2px;"></span>
+        </div>
+    </div>
+
+    <hr style="border:0; border-top:1px solid #f1f5f9; margin: 15px 0;">
+    <h3 style="margin: 0 0 10px 0; font-size: 16px;">Komentarze</h3>
+    
+    <div id="commentsList" style="max-height: 150px; overflow-y: auto; margin-bottom: 12px;"></div>
+    
+    <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+        <input id="newComment" placeholder="Napisz coś..." style="margin-bottom: 0; flex: 1; padding: 12px; font-size: 14px;">
+        <button onclick="addComment()" style="background: #3b82f6; color: white; border: none; border-radius: 12px; padding: 0 15px; font-weight: bold; cursor:pointer;">Wyślij</button>
+    </div>
+
+    <button id="deleteSpotBtn" onclick="deleteSpot()" style="width:100%; padding:14px; border-radius:12px; border:none; font-weight:600; background: #ef4444; color:white; font-size: 15px; display:none; cursor:pointer;">🗑️ Usuń tę miejscówkę</button>
+</div>
+
+<div class="bottom-panel" id="rankingPanel">
+    <div class="close-handle" onclick="closeAll()"></div>
+    <h2 style="margin-top:0">Top w twojej okolicy (5 km)</h2>
+    <div class="ranking-list" id="rankingList"></div>
+</div>
+
+<script type="module">
+// Zmienione importy, dodano getDoc i setDoc do obsługi wersji
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"
+import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, deleteDoc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"
+
+const firebaseConfig = { apiKey: "AIza...", authDomain: "mapa-miejscowek.firebaseapp.com", projectId: "mapa-miejscowek", storageBucket: "mapa-miejscowek.appspot.com", messagingSenderId: "95333779353", appId: "1:95333779353:web:69e97f3b5aa3f98fa6f508" };
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let myUid = localStorage.getItem('my_uid');
+if (!myUid) { myUid = 'user_' + Math.random().toString(36).substring(2, 15); localStorage.setItem('my_uid', myUid); }
+
+// Zapisywanie i odczytywanie ostatniej lokalizacji mapy
+const savedLat = localStorage.getItem('map_lat') || 52.2;
+const savedLng = localStorage.getItem('map_lng') || 19.2;
+const savedZoom = localStorage.getItem('map_zoom') || 6;
+
+const map = L.map('map', { zoomControl: false }).setView([savedLat, savedLng], savedZoom);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' ).addTo(map);
+
+// Nasłuchiwanie zmian pozycji mapy i zapis do Cache
+map.on('moveend', () => {
+    const center = map.getCenter();
+    localStorage.setItem('map_lat', center.lat);
+    localStorage.setItem('map_lng', center.lng);
+    localStorage.setItem('map_zoom', map.getZoom());
+});
+
+let adding = false, riskLevel = 1, currentSpot = null, userMarker = null;
+let allSpots = []; 
+let spotMarkers = {}; 
+let userPos = null;
+let reportTarget = { type: null, id: null };
+
+// --- NOWY SYSTEM OPTYMALIZACJI: CACHE + WERSJONOWANIE ---
+async function updateGlobalDataVersion() {
+    // Funkcja wywoływana po każdej modyfikacji (dodanie, usunięcie, komentarz), 
+    // aby inni użytkownicy wiedzieli, że trzeba odświeżyć cache.
+    const newVersion = Date.now().toString();
+    await setDoc(doc(db, "system", "version"), { v: newVersion });
+    localStorage.setItem('spots_version', newVersion); // aktualizujemy też własny cache
+}
+
+async function loadSpotsOptimized() {
+    // 1. Ładowanie natychmiastowe z Local Cache
+    const cachedSpots = JSON.parse(localStorage.getItem('spots_cache') || "[]");
+    const localVersion = localStorage.getItem('spots_version') || "0";
+    
+    if (cachedSpots.length > 0) {
+        cachedSpots.forEach(data => {
+            allSpots.push(data);
+            createMarker(data);
+        });
+    }
+
+    // 2. Sprawdzenie w tle, czy dane się zmieniły (dokument "version")
+    try {
+        const verSnap = await getDoc(doc(db, "system", "version"));
+        let remoteVersion = "0";
+        if (verSnap.exists()) {
+            remoteVersion = verSnap.data().v.toString();
+        } else {
+            // Jeśli to pierwsze uruchomienie projektu, tworzymy dokument
+            await setDoc(doc(db, "system", "version"), { v: Date.now().toString() });
+        }
+
+        // Jeśli wersje są różne (lub nie mamy cache'u), pobieramy wszystko z bazy
+        if (remoteVersion !== localVersion || cachedSpots.length === 0) {
+            const snap = await getDocs(collection(db, "spots"));
+            
+            // Czyścimy starą mapę i tablicę
+            Object.values(spotMarkers).forEach(m => map.removeLayer(m));
+            spotMarkers = {};
+            allSpots = [];
+
+            snap.forEach(d => {
+                const data = { ...d.data(), id: d.id };
+                allSpots.push(data);
+                createMarker(data);
+            });
+
+            // Zapisujemy nowy cache i nową wersję
+            localStorage.setItem('spots_cache', JSON.stringify(allSpots));
+            localStorage.setItem('spots_version', remoteVersion);
+        }
+    } catch(e) { console.warn("Praca offline lub błąd sprawdzania wersji:", e); }
+}
+
+// Uruchamiamy ładowanie
+loadSpotsOptimized();
+// --------------------------------------------------------
+
+window.closeAll = () => {
+    document.querySelectorAll('.bottom-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.center-modal').forEach(m => m.classList.remove('active'));
+    document.getElementById('overlay').style.display = "none";
+};
+
+window.openHelpPanel = () => { closeAll(); document.getElementById('overlay').style.display = "block"; document.getElementById('helpPanel').classList.add('active'); };
+
+window.openReportModal = (type, targetId) => {
+    const reportedItems = JSON.parse(localStorage.getItem('my_reports') || "[]");
+    if(reportedItems.includes(targetId)) { alert("Już zgłosiłeś ten element. Dziękujemy!"); return; }
+
+    closeAll();
+    reportTarget = { type, id: targetId };
+    document.getElementById('overlay').style.display = "block";
+    document.getElementById('reportPanel').classList.add('active');
+};
+
+window.submitReport = async () => {
+    const reason = document.getElementById('reportReason').value;
+    const reportData = { type: reportTarget.type, targetId: reportTarget.id, reason: reason, reportedBy: myUid, timestamp: new Date().toISOString() };
+    await addDoc(collection(db, "reports"), reportData);
+
+    const reportedItems = JSON.parse(localStorage.getItem('my_reports') || "[]");
+    reportedItems.push(reportTarget.id);
+    localStorage.setItem('my_reports', JSON.stringify(reportedItems));
+
+    closeAll();
+    alert("Zgłoszenie wysłane. Dziękujemy za pomoc!");
+};
+
+window.openAddPanel = () => { closeAll(); document.getElementById('addPanel').classList.add('active'); document.getElementById('overlay').style.display="block"; togglePlenerUI(); };
+
+window.togglePlenerUI = () => { document.getElementById('plenerExtras').style.display = (document.getElementById('type').value === "plener") ? "block" : "none"; };
+
+window.updateToggleUI = () => {
+    const isIllegal = document.getElementById('illegalToggle').checked;
+    document.getElementById('toggleLabel').innerText = isIllegal ? "🚨 Przypał" : "✅ Legalna";
+    document.getElementById('riskBox').style.display = isIllegal ? "block" : "none";
+};
+
+window.locateUser = () => map.locate({setView: true, maxZoom: 16});
+map.on('locationfound', (e) => {
+    userPos = e.latlng;
+    if(!userMarker) userMarker = L.marker(e.latlng, {icon: L.divIcon({className:'user-location-dot'})}).addTo(map);
+    else userMarker.setLatLng(e.latlng);
+});
+
+const riskIcons = document.querySelectorAll("#riskIcons span");
+riskIcons.forEach((s, i) => { s.onclick = () => { riskLevel = i + 1; riskIcons.forEach((el, idx) => el.classList.toggle('active', idx < riskLevel)); }; });
+
+document.getElementById('startAdd').onclick = () => {
+    if(!document.getElementById('nameInput').value) return alert("Podaj nazwę!");
+    adding = true; closeAll(); 
+    // Nowoczesny alert
+    document.getElementById('modernAlert').classList.add('show');
+};
+
+map.on('click', async (e) => {
+    if(!adding) { closeAll(); return; }
+    
+    // Ukrywamy alert
+    document.getElementById('modernAlert').classList.remove('show');
+
+    const type = document.getElementById('type').value;
+    const isIllegal = type === "plener" && document.getElementById('illegalToggle').checked;
+    
+    const data = {
+        lat: e.latlng.lat, lng: e.latlng.lng,
+        name: document.getElementById('nameInput').value, desc: document.getElementById('descInput').value,
+        type: type, illegal: isIllegal, risk: isIllegal ? riskLevel : 0,
+        ratingSum: 0, ratingCount: 0, creatorId: myUid, comments: []
+    };
+    
+    const docRef = await addDoc(collection(db, "spots"), data);
+    data.id = docRef.id;
+    
+    createMarker(data);
+    allSpots.push(data); 
+    
+    // Zapisujemy nowy stan w cache i podbijamy wersję na serwerze
+    localStorage.setItem('spots_cache', JSON.stringify(allSpots));
+    updateGlobalDataVersion();
+
+    adding = false;
+});
+
+function createMarker(data) {
+    const marker = L.marker([data.lat, data.lng], {
+        icon: L.divIcon({ html: `<div style="font-size:25px">${getEmoji(data.type)}</div>`, className:''})
+    }).addTo(map);
+    
+    spotMarkers[data.id] = marker;
+    marker.on('click', () => showSpotDetails(data));
+}
+
+function showSpotDetails(data) {
+    currentSpot = data;
+    closeAll(); 
+    
+    const offset = window.innerWidth < 600 ? 0.002 : 0.002; 
+    map.flyTo([data.lat - offset, data.lng], 16);
+    
+    document.getElementById('infoName').innerText = data.name;
+    document.getElementById('infoEmoji').innerText = getEmoji(data.type);
+    document.getElementById('infoDesc').innerText = data.desc;
+    
+    document.getElementById('reportSpotBtn').onclick = () => openReportModal('spot', data.id);
+    
+    const riskDiv = document.getElementById('infoRisk');
+    if(data.illegal) {
+        let sirensHTML = "";
+        for(let i = 0; i < 5; i++) {
+            const opacity = i < data.risk ? "1" : "0.2";
+            sirensHTML += `<span style="font-size: 20px; opacity: ${opacity}; margin-right: 2px;">🚨</span>`;
+        }
+        
+        // NOWE KOLORY RYZYKA
+        let riskColor = "#ef4444"; // Domyślnie czerwony dla 5
+        if(data.risk <= 2) riskColor = "#166534"; // Ciemnozielony dla 1-2
+        else if(data.risk <= 4) riskColor = "#eab308"; // Żółty dla 3-4
+
+        riskDiv.innerHTML = `<span style="color: ${riskColor}; margin-right: 8px;">Przypał:</span> <div style="display:flex;">${sirensHTML}</div>`;
+    } else {
+        riskDiv.innerHTML = data.type === "plener" ? "✅ Legalna miejscówka" : "";
+        riskDiv.style.color = "#22c55e";
+    }
+    
+    updateStarsUI();
+    renderComments();
+    
+    document.getElementById('deleteSpotBtn').style.display = (currentSpot.creatorId === myUid) ? "block" : "none";
+    document.getElementById('infoPanel').classList.add('active');
+}
+
+function renderComments() {
+    const list = document.getElementById('commentsList');
+    list.innerHTML = "";
+    
+    const comments = currentSpot.comments || [];
+    if(comments.length === 0) { list.innerHTML = "<div style='color:#94a3b8; font-size:13px;'>Brak komentarzy. Bądź pierwszy!</div>"; return; }
+    
+    comments.forEach(c => {
+        const cDiv = document.createElement('div');
+        cDiv.className = "comment-box";
+        
+        const textSpan = document.createElement('span');
+        textSpan.innerText = c.text;
+        textSpan.style.flex = "1";
+        cDiv.appendChild(textSpan);
+        
+        if(c.creatorId === myUid) {
+            const delIcon = document.createElement('span');
+            delIcon.className = "action-icon"; delIcon.innerText = "🗑️"; delIcon.title = "Usuń komentarz";
+            delIcon.style.marginLeft = "10px";
+            delIcon.onclick = () => deleteComment(c.id);
+            cDiv.appendChild(delIcon);
+        } else {
+            const reportIcon = document.createElement('span');
+            reportIcon.className = "action-icon"; reportIcon.innerText = "⚠️"; reportIcon.title = "Zgłoś komentarz";
+            reportIcon.style.marginLeft = "10px";
+            reportIcon.onclick = () => openReportModal('comment', c.id);
+            cDiv.appendChild(reportIcon);
+        }
+        
+        list.appendChild(cDiv);
+    });
+}
+
+window.addComment = async () => {
+    const input = document.getElementById('newComment');
+    const text = input.value.trim();
+    if(!text) return;
+    
+    const comment = { id: Date.now().toString(), text: text, creatorId: myUid };
+    const updatedComments = [...(currentSpot.comments || []), comment];
+    
+    await updateDoc(doc(db, "spots", currentSpot.id), { comments: updatedComments });
+    
+    currentSpot.comments = updatedComments;
+    input.value = "";
+    renderComments();
+    
+    const idx = allSpots.findIndex(x => x.id === currentSpot.id);
+    if(idx !== -1) allSpots[idx].comments = updatedComments;
+    
+    localStorage.setItem('spots_cache', JSON.stringify(allSpots));
+    updateGlobalDataVersion();
+};
+
+window.deleteComment = async (commentId) => {
+    if(!confirm("Usunąć ten komentarz?")) return;
+    const updatedComments = currentSpot.comments.filter(c => c.id !== commentId);
+    await updateDoc(doc(db, "spots", currentSpot.id), { comments: updatedComments });
+    currentSpot.comments = updatedComments;
+    renderComments();
+    
+    const idx = allSpots.findIndex(x => x.id === currentSpot.id);
+    if(idx !== -1) allSpots[idx].comments = updatedComments;
+
+    localStorage.setItem('spots_cache', JSON.stringify(allSpots));
+    updateGlobalDataVersion();
+};
+
+window.deleteSpot = async () => {
+    if(!confirm("Na pewno chcesz całkowicie usunąć tę miejscówkę?")) return;
+    await deleteDoc(doc(db, "spots", currentSpot.id));
+    
+    if(spotMarkers[currentSpot.id]) { map.removeLayer(spotMarkers[currentSpot.id]); delete spotMarkers[currentSpot.id]; }
+    allSpots = allSpots.filter(s => s.id !== currentSpot.id);
+    closeAll();
+
+    localStorage.setItem('spots_cache', JSON.stringify(allSpots));
+    updateGlobalDataVersion();
+};
+
+function getEmoji(t) { return t==="plener"?"🍾":t==="pub"?"🍻":"🍸"; }
+
+const userStars = document.querySelectorAll("#userStars span");
+userStars.forEach((s, i) => {
+    s.onclick = async () => {
+        let ratings = JSON.parse(localStorage.getItem('my_ratings') || "{}");
+        if(ratings[currentSpot.id]) return alert("Już oceniono!");
+        const val = i + 1;
+        currentSpot.ratingSum += val; currentSpot.ratingCount += 1;
+        
+        const idx = allSpots.findIndex(x => x.id === currentSpot.id);
+        if(idx !== -1) allSpots[idx] = currentSpot;
+
+        await updateDoc(doc(db, "spots", currentSpot.id), { ratingSum: currentSpot.ratingSum, ratingCount: currentSpot.ratingCount });
+        ratings[currentSpot.id] = val;
+        localStorage.setItem('my_ratings', JSON.stringify(ratings));
+        updateStarsUI();
+
+        localStorage.setItem('spots_cache', JSON.stringify(allSpots));
+        updateGlobalDataVersion();
+    };
+});
+
+function updateStarsUI() {
+    const avg = currentSpot.ratingCount ? (currentSpot.ratingSum / currentSpot.ratingCount) : 0;
+    const avgStarsDiv = document.getElementById('avgStars');
+    avgStarsDiv.innerHTML = "";
+    for(let i=0; i<5; i++) {
+        const star = document.createElement('span'); star.innerText = "★";
+        star.className = i < Math.round(avg) ? "filled" : "empty";
+        avgStarsDiv.appendChild(star);
+    }
+    document.getElementById('ratingStats').innerText = `${avg.toFixed(1)}/5 (${currentSpot.ratingCount})`;
+    
+    const myRating = JSON.parse(localStorage.getItem('my_ratings') || "{}")[currentSpot.id] || 0;
+    userStars.forEach((s, i) => { s.className = i < myRating ? "active" : "empty"; s.innerText = "★"; });
+}
+
+window.openRanking = () => {
+    if(!userPos) { alert("Włącz lokalizację 📍"); return; }
+    const list = document.getElementById('rankingList'); list.innerHTML = "";
+    
+    const nearby = allSpots.map(s => ({ ...s, dist: userPos.distanceTo(L.latLng(s.lat, s.lng)), score: s.ratingCount ? s.ratingSum/s.ratingCount : 0 }))
+    .filter(s => s.dist <= 5000).sort((a,b) => b.score - a.score);
+
+    if(nearby.length === 0) list.innerHTML = "<p style='text-align:center; color:#94a3b8; padding:20px;'>Brak miejscówek w promieniu 5 km.</p>";
+    else {
+        nearby.forEach(s => {
+            const item = document.createElement('div'); item.className = 'ranking-item';
+            item.innerHTML = `<strong>${getEmoji(s.type)} ${s.name}</strong><span style="font-size:13px; color:#64748b; margin-top:4px;">${s.score.toFixed(1)} ⭐ | ${(s.dist/1000).toFixed(1)} km stąd</span>`;
+            item.onclick = () => showSpotDetails(s);
+            list.appendChild(item);
+        });
+    }
+    closeAll(); document.getElementById('rankingPanel').classList.add('active'); document.getElementById('overlay').style.display="block";
+};
+
+</script>
+</body>
+</html>
